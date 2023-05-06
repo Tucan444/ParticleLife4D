@@ -1,0 +1,45 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+struct Particle2D {
+    int color;
+    float2 position;
+    float2 velocity;
+};
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+StructuredBuffer<Particle2D> particles;
+int particlesN;
+RWTexture2D<float4> Result;
+
+int particleSize;
+float sizeSquared;
+int halfSize;
+bool velocityBrightness;
+
+float2 position;
+float scale;
+
+[numthreads(128,1,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    // TODO: insert actual code here!
+    if (id.x >= particlesN) {return;}
+    Particle2D p = particles[id.x];
+
+    float b = min(1, length(p.velocity) / 0.05) * velocityBrightness + 1 * !velocityBrightness;
+
+    for (int i = 0; i < particleSize; i++) {
+        for (int j = 0; j < particleSize; j++) {
+            float2 center = float2(640, 360);
+            float2 pos = float2(280, 0) + (7.2 * p.position) + position;
+            pos = (center + (pos-center) * scale) + float2(-halfSize + i, -halfSize + j);
+
+            bool inCircle = pow(-halfSize + i, 2) + pow(-halfSize + j, 2) < sizeSquared;
+            float4 col = float4(0.3, 0.3, 0.3, 0) + float4((0.3 + 0.09 * p.color) % 0.6, (0 + 0.04 * p.color) % 0.6, (0.1 + 0.01 * p.color) % 0.6, 1);
+            col *= b;
+            if (inCircle) {Result[int2(pos.xy)] = col;}
+        }
+    }
+}

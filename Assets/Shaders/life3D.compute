@@ -1,0 +1,66 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+struct Relation {
+    float radius;
+    float3 attraction;
+    float repulsionSlope;
+};
+
+struct Particle3D {
+    int color;
+    float3 position;
+    float3 velocity;
+};
+
+StructuredBuffer<Relation> relations;
+RWStructuredBuffer<Particle3D> particles;
+int typesN;
+int particlesN;
+
+// global settings
+float friction;
+float force;
+float pressure;
+
+bool bound;
+
+int affect(int y, int x) {
+    return x + (y * typesN);
+}
+
+[numthreads(128,1,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= particlesN) {return;}
+
+    Particle3D p = particles[id.x];
+    float attraction;
+
+    for (int i = 0; i < particlesN; i++) {
+        Relation relation = relations[affect(particles[i].color, p.color)];
+
+        if (max(max(abs(p.position.x - particles[i].position.x), abs(p.position.y - particles[i].position.y)), abs(p.position.z - particles[i].position.z)) >
+            relation.radius) { continue; }
+        
+        float d = length(p.position - particles[i].position);
+
+        if (d > relation.radius || d == 0) {continue;}
+
+        attraction = 0;
+        attraction = min(0, -1 + (relation.repulsionSlope * d)) * pressure;  // repulsion
+        attraction += max(0, 1 - (abs(relation.attraction.y - d) * relation.attraction.z)) * relation.attraction.x; // attraction
+
+        float3 dir = normalize(particles[i].position - p.position);
+
+        p.velocity += dir * attraction * 0.02 * force;
+    }
+
+    p.velocity *= friction;
+    p.position += p.velocity;
+
+    p.position = float3(min(100, max(0, p.position.x)), min(100, max(0, p.position.y)), min(100, max(0, p.position.z)))* bound
+                 + p.position * !bound;
+    
+    particles[id.x] = p;
+}

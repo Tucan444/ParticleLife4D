@@ -1,0 +1,77 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+struct Particle4D {
+    int color;
+    float4 position;
+    float4 velocity;
+};
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+StructuredBuffer<Particle4D> particles;
+int particlesN;
+RWTexture2D<float4> Result;
+
+float particleSize;
+bool velocityBrightness;
+
+// 4d cam
+float4 hpos;
+float4x4 hrot;
+float hfovx;
+
+// 3d cam
+float3 position;
+float4x4 orientation;
+float fovx;
+
+
+[numthreads(128,1,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    // TODO: insert actual code here!
+    if (id.x >= particlesN) {return;}
+    Particle4D p = particles[id.x];
+
+    float b = min(1, length(p.velocity) / 0.03) * velocityBrightness + 1 * !velocityBrightness;
+
+    // 4d cam
+    p.position -= hpos;
+    p.position = mul(hrot, p.position);
+    p.position.x *= -1;
+    if (p.position.x < 0.1) {return;}
+    float squash = (hfovx / p.position.x) * 50;
+    p.position *= squash;
+    float size = particleSize * squash;
+    float3 projected = p.position.yzw;
+
+    // 3d cam
+    projected -= position;
+    projected = mul(orientation, float4(projected, 0));
+    if (projected.x < 0.1) {return;}
+    squash = (fovx / projected.x) * 360;
+    projected *= squash;
+    size = size * squash;
+
+    // particle size
+    int psize = max(1, size);
+    float halfSize = size * 0.5;
+    int sizeSquared = halfSize * halfSize;
+    int hsize = halfSize;
+    
+    if (length(float2(max(0, abs(projected.y) - 640), max(0, abs(projected.z) - 360))) > halfSize + 1) {
+        return;
+    }
+
+    for (int i = 0; i < psize; i++) {
+        for (int j = 0; j < psize; j++) {
+            float2 pos = float2(640, 360) + projected.yz + float2(-hsize + i, -hsize + j);
+
+            bool inCircle = pow(-hsize + i, 2) + pow(-hsize + j, 2) < sizeSquared;
+            float4 col = float4(0.3, 0.3, 0.3, 0) + float4((0.3 + 0.09 * p.color) % 0.6, (0 + 0.04 * p.color) % 0.6, (0.1 + 0.01 * p.color) % 0.6, 1);
+            col *= b;
+            if (inCircle || psize == 1) {Result[int2(pos.xy)] = col;}
+        }
+    }
+}

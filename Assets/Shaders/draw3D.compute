@@ -1,0 +1,60 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+struct Particle3D {
+    int color;
+    float3 position;
+    float3 velocity;
+};
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+StructuredBuffer<Particle3D> particles;
+int particlesN;
+RWTexture2D<float4> Result;
+
+float particleSize;
+bool velocityBrightness;
+
+float3 position;
+float4x4 orientation;
+float fovx;
+
+
+[numthreads(128,1,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    // TODO: insert actual code here!
+    if (id.x >= particlesN) {return;}
+    Particle3D p = particles[id.x];
+
+    float b = min(1, length(p.velocity) / 0.05) * velocityBrightness + 1 * !velocityBrightness;
+
+    // reorigin
+    p.position -= position;
+    p.position = mul(orientation, float4(p.position, 0));
+    if (p.position.x < 0.1) {return;}
+    float squash = (fovx / p.position.x) * 360;
+    p.position *= squash;
+    float size = particleSize * squash;
+
+    int psize = max(1, size);
+    float halfSize = size * 0.5;
+    int sizeSquared = halfSize * halfSize;
+    int hsize = halfSize;
+    
+    if (length(float2(max(0, abs(p.position.y) - 640), max(0, abs(p.position.z) - 360))) > halfSize + 1) {
+        return;
+    }
+
+    for (int i = 0; i < psize; i++) {
+        for (int j = 0; j < psize; j++) {
+            float2 pos = float2(640, 360) + p.position.yz + float2(-hsize + i, -hsize + j);
+
+            bool inCircle = pow(-hsize + i, 2) + pow(-hsize + j, 2) < sizeSquared;
+            float4 col = float4(0.3, 0.3, 0.3, 0) + float4((0.3 + 0.09 * p.color) % 0.6, (0 + 0.04 * p.color) % 0.6, (0.1 + 0.01 * p.color) % 0.6, 1);
+            col *= b;
+            if (inCircle || psize == 1) {Result[int2(pos.xy)] = col;}
+        }
+    }
+}
